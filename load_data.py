@@ -2,9 +2,9 @@ import os,pickle
 from scipy.sparse import load_npz
 import numpy as np
 
-cls = ['A549', 'H1', 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3']
+cls = ['A549', 'H1']
 
-
+# , 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
 def pad_seq_matrix(matrix, pad_len=500):
     # add flanking region to each sample
     paddings = np.zeros((1, 4, pad_len)).astype('int8')
@@ -25,7 +25,8 @@ def load_data():
     dnase_path = '/scratch/drjieliu_root/drjieliu/zhenhaoz/DNase'
     chip_signal_dir = '/scratch/drjieliu_root/drjieliu/zhenhaoz/chip_seq_signal/100_resolution/'
     ref_genomes = {}
-    for chr in range(1, 23):
+    for chr in range(1, 3):
+        print(chr)
         ref_file = os.path.join(ref_path, 'chr%s.npz' % chr)
         ref_gen_data = load_npz(ref_file).toarray().reshape(4, -1, 1000).swapaxes(0, 1)
         ref_gen_data = pad_seq_matrix(ref_gen_data)
@@ -34,7 +35,8 @@ def load_data():
     dnase_data = {}
     for cl in cls:
         dnase_data[cl] = {}
-        for chr in range(1, 23):
+        for chr in range(1, 3):
+            print(cl,chr)
             dnase_file = os.path.join(dnase_path, cl, 'chr%s.npy' % chr)
             temp_data = np.load(dnase_file)
             dnase_data[cl][chr] = pad_signal_matrix(temp_data.reshape(-1, 1000))
@@ -42,10 +44,11 @@ def load_data():
     chip_data = {}
     for cl in cls:
         chip_data[cl] = {}
-        for chr in range(1, 23):
+        for chr in range(1, 3):
+            print(cl, chr)
             chip_file = os.path.join(chip_signal_dir, cl, 'chr%s.npy' % chr)
             temp_data = np.load(chip_file)
-            chip_data[cl][chr] = pad_signal_matrix(temp_data.reshape(-1, 1000))
+            chip_data[cl][chr]=temp_data
     print('chip load finished')
     with open('/scratch/drjieliu_root/drjieliu/zhenhaoz/labels/input_initial_label.pickle','rb') as f:
         labels=pickle.load(f)

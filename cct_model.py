@@ -30,6 +30,7 @@ class CCTbert(nn.Module):
         self.hm_pos_embedding = nn.Parameter(torch.randn(1, HM_num, dim))
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.dropout = nn.Dropout(dropout)
 
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),
@@ -40,14 +41,17 @@ class CCTbert(nn.Module):
         seq_embed=self.conv_layer(sequence).transpose(-2,-1)
         seq_embed+=self.pos_embedding
         seq_embed+=self.type_embedding[:,0,:]
-
+        print(seq_embed.shape)
         tf_embed=self.chip_embedding(tf_data)
         b,n,_=tf_embed.shape
+        print(b,n,label_mask.shape)
         tf_embed=generate_mask(tf_embed,label_mask[:,:n],self.mask_token)
+        print(tf_embed.shape)
         tf_embed+=self.tf_pos_embedding
         tf_embed+=self.type_embedding[:,1,:]
 
         hm_embed = self.chip_embedding(hm_data)
+        print(hm_embed.shape)
         hm_embed = generate_mask(hm_embed, label_mask[:, n:], self.mask_token)
         hm_embed += self.hm_pos_embedding
         hm_embed += self.type_embedding[:,2,:]

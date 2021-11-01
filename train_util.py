@@ -2,6 +2,7 @@ import numpy as np
 import torch,os,pickle
 def undersampling_negatives(xidx,targets,undersampling_ratio=0.6):
     all_negative_idx=np.where(np.sum(targets[xidx],1)==0)[0]
+
     probs=np.random.uniform(0,1,all_negative_idx.shape[0])
     mask_idx=np.where(probs<undersampling_ratio)[0]
     return np.delete(xidx,all_negative_idx[mask_idx])
@@ -17,7 +18,8 @@ def pos_class_weight(targets):
 
 
 def label_mask():
-    cls = ['A549', 'H1', 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3']
+    cls = ['A549', 'H1']
+    # , 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
     with open('/scratch/drjieliu_root/drjieliu/zhenhaoz/investigated_chips.txt', 'r') as f:
         all_chips = f.read().splitlines()
     masks={}

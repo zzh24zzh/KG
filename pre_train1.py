@@ -32,8 +32,9 @@ def find_gapped(ref_matrix):
 
 # chrs=[]
 # dataloader = DataLoader(dataset=Task1Dataset(), batch_size=32, shuffle=False, num_workers=2)
-cls = ['A549', 'H1', 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3']
-lengths = {'DNA': 2000, 'HM': 11, 'TF': 256}
+cls = ['A549', 'H1']
+# , 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
+lengths = {'DNA': 2000, 'HM': 11, 'TF': 257}
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model = CCTbert(
     kmers=5, dim=360, lengths=lengths,
@@ -48,7 +49,7 @@ optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay
 
 
 def shuffle_data():
-    chrs = np.arange(1, 23)
+    chrs = np.arange(1, 3)
     temp = np.tile(chrs, (len(cls), 1))
     for i in range(len(cls)):
         np.random.shuffle(temp[i, :])
@@ -79,8 +80,10 @@ for epoch in range(args.epochs):
         print(chr_data)
 
         input_ref_genome = np.concatenate([ref_genomes[chr] for chr in chr_data], axis=0)
-        input_dnase = concat_data(dnase_data, chr_data)
+        input_dnase = np.expand_dims(concat_data(dnase_data, chr_data), axis=1)
+        print(input_dnase.shape)
         target_label = concat_data(labels, chr_data, sparse=True)
+        print(target_label.shape)
         input_chip = concat_data(chip_data, chr_data)
         input_label_mask = generate_label_mask(label_masks, [ref_genomes[chr].shape[0] for chr in chr_data])
         print(input_label_mask.shape)
@@ -91,14 +94,17 @@ for epoch in range(args.epochs):
             if step > 2:
                 break
             t = time.time()
-            train_seq = np.concatenate((input_ref_genome[train_batch_idx], input_dnase[train_batch_idx]), axis=0)
+            train_seq = np.concatenate((input_ref_genome[train_batch_idx], input_dnase[train_batch_idx]), axis=1)
+            print(train_seq.shape)
             train_seq = torch.FloatTensor(train_seq).to(device)
             print(train_seq.shape)
-            train_tf_data = torch.FloatTensor(input_chip[:, :lengths['TF'], :]).to(device)
-            train_hm_data = torch.FloatTensor(input_chip[:, lengths['TF']:, :]).to(device)
+            train_tf_data = torch.FloatTensor(input_chip[train_batch_idx, :lengths['TF'], :]).to(device)
+            train_hm_data = torch.FloatTensor(input_chip[train_batch_idx, lengths['TF']:, :]).to(device)
             train_lmask = torch.FloatTensor(input_label_mask[train_batch_idx]).to(device)
+            print(train_lmask.shape)
             train_target = torch.FloatTensor(target_label[train_batch_idx]).to(device)
-            output = model(train_seq, train_tf_data, train_hm_data, train_lmask)
+            print(train_target.shape)
+            output = model(train_seq, train_tf_data, train_hm_data, input_label_mask[train_batch_idx])
             print(output.shape)
             loss = criterion(output, train_target, train_lmask)
             cur_loss = loss.item()
