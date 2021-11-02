@@ -37,7 +37,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 model = CCTbert(
     kmers=5, dim=256, lengths=lengths,
-    signal_length=10, depth=6, heads=4,
+    signal_length=10, depth=6, heads=6,
     dim_head=128, mlp_dim=256, dropout=0.1
 )
 model.to(device)
