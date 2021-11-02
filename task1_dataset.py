@@ -27,9 +27,7 @@ sample_nums=[chr_lens[i-1]//1000 for i in range(1,3)]
 class Task1Dataset(Dataset):
     def __init__(self, chroms,target_label):
         input_nums=[0]+[sample_nums[chr-1] for chr in chroms]
-        print(input_nums)
         pad_sum=[sum(input_nums[:i+1]) for i in range(len(chroms))]
-        print(pad_sum)
         xindices=[]
         for i in range(len(pad_sum)):
             xindices.append(input_indices[chroms[i]]+pad_sum[i])
@@ -37,6 +35,5 @@ class Task1Dataset(Dataset):
         self.num=self.x_index.shape[0]
     def __getitem__(self, index):
         return self.x_index[index]
-    # , self.y[index]
     def __len__(self):
         return self.num

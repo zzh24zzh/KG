@@ -13,10 +13,7 @@ class CCTbert(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool1d(kernel_size=kmers)
         )
-        # self.tokenize=Rearrange('b c (L k) -> b (L) (k c)',k=kmers)
-        # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.mask_token=nn.Parameter(torch.randn(1, 1, dim))
-
         self.types_token=['DNA','TF','HM']
         self.type_embedding = nn.Parameter(torch.randn(1, len(self.types_token), dim))
         # embed ChIP-seq
@@ -37,23 +34,19 @@ class CCTbert(nn.Module):
             nn.Linear(dim, 1)
         )
 
-    def forward(self,sequence,tf_data,hm_data,label_mask,embed_seq=False):
+    def forward(self,sequence,tf_data,hm_data,label_mask,mask_prob=0.3,mask_seq=False):
         seq_embed=self.conv_layer(sequence).transpose(-2,-1)
         b,seq_n,_=seq_embed.shape
         seq_embed+=self.pos_embedding
         seq_embed+=self.type_embedding[:,0,:]
-        print(seq_embed.shape)
         tf_embed=self.chip_embedding(tf_data)
         b,n,_=tf_embed.shape
-        print(b,n,label_mask.shape)
-        tf_embed=generate_mask(tf_embed,label_mask[:,:n],self.mask_token)
-        print(tf_embed.shape)
+        tf_embed=generate_mask(tf_embed,label_mask[:,:n],self.mask_token,mask_prob)
         tf_embed+=self.tf_pos_embedding
         tf_embed+=self.type_embedding[:,1,:]
 
         hm_embed = self.chip_embedding(hm_data)
-        print(hm_embed.shape)
-        hm_embed = generate_mask(hm_embed, label_mask[:, n:], self.mask_token)
+        hm_embed = generate_mask(hm_embed, label_mask[:, n:], self.mask_token,mask_prob)
         hm_embed += self.hm_pos_embedding
         hm_embed += self.type_embedding[:,2,:]
 

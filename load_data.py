@@ -3,9 +3,8 @@ from scipy.sparse import load_npz
 import numpy as np
 
 cls = ['A549', 'H1']
-
 # , 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
-def pad_seq_matrix(matrix, pad_len=500):
+def pad_seq_matrix(matrix, pad_len=250):
     # add flanking region to each sample
     paddings = np.zeros((1, 4, pad_len)).astype('int8')
     dmatrix = np.concatenate((paddings, matrix[:, :, -pad_len:]), axis=0)[:-1, :, :]
@@ -13,7 +12,7 @@ def pad_seq_matrix(matrix, pad_len=500):
     return np.concatenate((dmatrix, matrix, umatrix), axis=2)
 
 
-def pad_signal_matrix(matrix, pad_len=500):
+def pad_signal_matrix(matrix, pad_len=250):
     paddings = np.zeros(pad_len).astype('float32')
     dmatrix = np.vstack((paddings, matrix[:, -pad_len:]))[:-1, :]
     umatrix = np.vstack((matrix[:, :pad_len], paddings))[1:, :]
@@ -26,7 +25,6 @@ def load_data():
     chip_signal_dir = '/scratch/drjieliu_root/drjieliu/zhenhaoz/chip_seq_signal/100_resolution/'
     ref_genomes = {}
     for chr in range(1, 3):
-        print(chr)
         ref_file = os.path.join(ref_path, 'chr%s.npz' % chr)
         ref_gen_data = load_npz(ref_file).toarray().reshape(4, -1, 1000).swapaxes(0, 1)
         ref_gen_data = pad_seq_matrix(ref_gen_data)

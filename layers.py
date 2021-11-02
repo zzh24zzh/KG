@@ -103,10 +103,10 @@ class Balanced_AsymmetricLoss(nn.Module):
                 torch.set_grad_enabled(True)
             loss *= one_sided_w
             loss*=mask
-        return -loss.sum()/torch.sum(mask)
+        return -loss.sum()/(torch.sum(mask)+self.eps)
 
 
-def generate_mask(input,label_mask,mask_token,mask_prob=0.3):
+def generate_mask(input,label_mask,mask_token,mask_prob):
     b,n,_=input.shape
     probs = np.random.uniform(0, 1, (b,n))
     tmask=np.where(probs<mask_prob,0,1)

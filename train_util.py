@@ -18,8 +18,7 @@ def pos_class_weight(targets):
 
 
 def label_mask():
-    cls = ['A549', 'H1']
-    # , 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
+    cls = ['A549', 'H1', 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3']
     with open('/scratch/drjieliu_root/drjieliu/zhenhaoz/investigated_chips.txt', 'r') as f:
         all_chips = f.read().splitlines()
     masks={}
