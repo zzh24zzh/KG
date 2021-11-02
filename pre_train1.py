@@ -32,7 +32,7 @@ def find_gapped(ref_matrix):
 
 cls = ['A549', 'H1','K562']
  # 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
-lengths = {'DNA': 2000, 'HM': 11, 'TF': 257}
+lengths = {'DNA': 1500, 'HM': 11, 'TF': 257}
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 model = CCTbert(

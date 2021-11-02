@@ -4,7 +4,7 @@ import numpy as np
 
 cls = ['A549', 'H1', 'K562']
 # , 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
-def pad_seq_matrix(matrix, pad_len=500):
+def pad_seq_matrix(matrix, pad_len=250):
     # add flanking region to each sample
     paddings = np.zeros((1, 4, pad_len)).astype('int8')
     dmatrix = np.concatenate((paddings, matrix[:, :, -pad_len:]), axis=0)[:-1, :, :]
@@ -12,7 +12,7 @@ def pad_seq_matrix(matrix, pad_len=500):
     return np.concatenate((dmatrix, matrix, umatrix), axis=2)
 
 
-def pad_signal_matrix(matrix, pad_len=500):
+def pad_signal_matrix(matrix, pad_len=250):
     paddings = np.zeros(pad_len).astype('float32')
     dmatrix = np.vstack((paddings, matrix[:, -pad_len:]))[:-1, :]
     umatrix = np.vstack((matrix[:, :pad_len], paddings))[1:, :]
