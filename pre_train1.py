@@ -15,8 +15,8 @@ from train_util import pos_class_weight
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate.')
-parser.add_argument('--batchsize', type=int, default=128)
-parser.add_argument('--epochs', type=int, default=100)
+parser.add_argument('--batchsize', type=int, default=64)
+parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--load_model', default=False, action='store_true', help='load trained model')
 parser.add_argument('--test', default=False, action='store_true', help='model testing')
 args = parser.parse_args()
@@ -30,9 +30,9 @@ def find_gapped(ref_matrix):
     return gapped_idx
 
 
-cls = ['A549', 'H1']
-# , 'K562', 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
-lengths = {'DNA': 1500, 'HM': 11, 'TF': 257}
+cls = ['A549', 'H1','K562']
+ # 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
+lengths = {'DNA': 2000, 'HM': 11, 'TF': 257}
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 model = CCTbert(
@@ -43,8 +43,11 @@ model = CCTbert(
 model.to(device)
 
 pos_ratio = np.load('/scratch/drjieliu_root/drjieliu/zhenhaoz/pos_class_weight_sqrt.npy')
-criterion = Balanced_AsymmetricLoss(gamma_neg=0, gamma_pos=0, clip=0, alpha=torch.FloatTensor(pos_ratio).to(device))
-# criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.FloatTensor(pos_ratio).to(device))
+# asymmetric loss
+# criterion = Balanced_AsymmetricLoss(gamma_neg=4, gamma_pos=1, clip=0.05, alpha=torch.FloatTensor(pos_ratio).to(device))
+
+# normal bcelosswithlogits
+criterion = Balanced_AsymmetricLoss(gamma_neg=0, gamma_pos=0, clip=0)
 optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
 # learning rate decay
 scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=2)
@@ -54,7 +57,7 @@ optimizer.zero_grad()
 optimizer.step()
 
 def shuffle_data():
-    chrs = np.arange(1, 3)
+    chrs = np.arange(1, 4)
     temp = np.tile(chrs, (len(cls), 1))
     for i in range(len(cls)):
         np.random.shuffle(temp[i, :])
@@ -74,26 +77,26 @@ def prepare_date(chr_data, ref_genomes, dnase_data, labels, chip_data, label_mas
 
 # load all the training data to memory
 ref_genomes, dnase_data, chip_data, labels = load_data()
-
 # miss chip-seq in each cell line
 with open('/scratch/drjieliu_root/drjieliu/zhenhaoz/label_mask.pickle', 'rb') as f:
     label_masks = pickle.load(f)
 
 best_loss = 1e10
 scheduler.step(best_loss)
-for epoch in range(args.epochs):
 
+for epoch in range(args.epochs):
     iterations = shuffle_data()
     training_losses = []
-    validation_losses = [1]
+    validation_losses = []
     for iter in range(iterations.shape[1]):
-        if iter < 20:
+        if iter < 2:
             model.train()
             mode = 'train'
         else:
             model.eval()
             mode = 'validation'
         chr_data = iterations[:, iter].tolist()
+        print(chr_data)
         input_seqs, target_label, input_chip, input_label_mask=prepare_date(chr_data, ref_genomes, dnase_data, labels, chip_data, label_masks)
         dataloader = DataLoader(dataset=Task1Dataset(chr_data, target_label), batch_size=args.batchsize
                                 , shuffle=False, num_workers=2)
@@ -104,10 +107,10 @@ for epoch in range(args.epochs):
             train_hm_data = input_chip[train_batch_idx, lengths['TF']:, :].to(device)
             train_lmask = torch.FloatTensor(input_label_mask[train_batch_idx]).to(device)
             train_target = torch.FloatTensor(target_label[train_batch_idx]).to(device)
-            output = model(train_seq, train_tf_data, train_hm_data, input_label_mask[train_batch_idx])
-            loss = criterion(output, train_target, train_lmask)
-            cur_loss = loss.item()
             if mode == 'train':
+                output = model(train_seq, train_tf_data, train_hm_data, input_label_mask[train_batch_idx])
+                loss = criterion(output, train_target, train_lmask)
+                cur_loss = loss.item()
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -118,15 +121,29 @@ for epoch in range(args.epochs):
                           "time=", "{:.5f}".format(time.time() - t)
                           )
             else:
-                validation_losses.append(cur_loss)
+                temp_loss=[]
+                for maskprob in [0.3, 0.6, 1]:
+                    output = model(train_seq, train_tf_data, train_hm_data, input_label_mask[train_batch_idx],mask_prob=maskprob)
+                    loss = criterion(output, train_target, train_lmask)
+                    cur_loss = loss.item()
+                    temp_loss.append(cur_loss)
+                vloss=np.mean(temp_loss)
+                validation_losses.append(vloss)
+                if step % 1000 == 0:
+                    print("Epoch:", '%04d' % (epoch + 1), "step:", '%04d' % (step + 1), "validation_loss=",
+                          "{:.7f}".format(vloss),
+                          "time=", "{:.5f}".format(time.time() - t)
+                          )
 
+    train_loss = np.average(training_losses)
+    print('Epoch: {} LR: {:.8f} train_loss: {:.7f}'.format(epoch, optimizer.param_groups[0]['lr'], train_loss))
     valid_loss = np.average(validation_losses)
     scheduler.step(valid_loss)
-    print('Epoch: {} LR: {:.8f} Valid_loss: {:.7f}'.format(epoch, optimizer.param_groups[0]['lr'], valid_loss))
+    print('Epoch: {} LR: {:.8f} valid_loss: {:.7f}'.format(epoch, optimizer.param_groups[0]['lr'], valid_loss))
 
-    if valid_loss < best_loss:
-        best_loss = valid_loss
-        torch.save(model.state_dict(),
-                       '/scratch/drjieliu_root/drjieliu/zhenhaoz/models/pre_train_task1.pt')
-        print('save model')
+    # if valid_loss < best_loss:
+    #     best_loss = valid_loss
+    #     torch.save(model.state_dict(),
+    #                    '/scratch/drjieliu_root/drjieliu/zhenhaoz/models/pre_train_task1.pt')
+    #     print('save model')
 

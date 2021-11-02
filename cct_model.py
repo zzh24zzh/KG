@@ -39,14 +39,21 @@ class CCTbert(nn.Module):
         b,seq_n,_=seq_embed.shape
         seq_embed+=self.pos_embedding
         seq_embed+=self.type_embedding[:,0,:]
-        tf_embed=self.chip_embedding(tf_data)
-        b,n,_=tf_embed.shape
-        tf_embed=generate_mask(tf_embed,label_mask[:,:n],self.mask_token,mask_prob)
+
+        b, n, _ = tf_data.shape
+        if mask_prob==1:
+            tf_embed=self.mask_token.repeat(b,n,1)
+        else:
+            tf_embed=self.chip_embedding(tf_data)
+            tf_embed=generate_mask(tf_embed,label_mask[:,:n],self.mask_token,mask_prob)
         tf_embed+=self.tf_pos_embedding
         tf_embed+=self.type_embedding[:,1,:]
 
-        hm_embed = self.chip_embedding(hm_data)
-        hm_embed = generate_mask(hm_embed, label_mask[:, n:], self.mask_token,mask_prob)
+        if mask_prob == 1:
+            hm_embed=self.mask_token.repeat(b,hm_data.shape[1],1)
+        else:
+            hm_embed = self.chip_embedding(hm_data)
+            hm_embed = generate_mask(hm_embed, label_mask[:, n:], self.mask_token,mask_prob)
         hm_embed += self.hm_pos_embedding
         hm_embed += self.type_embedding[:,2,:]
 
