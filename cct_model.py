@@ -39,6 +39,7 @@ class CCTbert(nn.Module):
 
     def forward(self,sequence,tf_data,hm_data,label_mask,embed_seq=False):
         seq_embed=self.conv_layer(sequence).transpose(-2,-1)
+        b,seq_n,_=seq_embed.shape
         seq_embed+=self.pos_embedding
         seq_embed+=self.type_embedding[:,0,:]
         print(seq_embed.shape)
@@ -61,5 +62,5 @@ class CCTbert(nn.Module):
         x = self.dropout(x)
         x = self.transformer(x)
 
-        x=self.mlp_head(x[:,n:,:]).squeeze()
+        x=self.mlp_head(x[:,seq_n:,:]).squeeze()
         return x
