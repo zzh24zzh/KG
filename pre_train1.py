@@ -19,6 +19,7 @@ parser.add_argument('--batchsize', type=int, default=64)
 parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--load_model', default=False, action='store_true', help='load trained model')
 parser.add_argument('--test', default=False, action='store_true', help='model testing')
+parser.add_argument('--signal_length', type=int, default=10)
 args = parser.parse_args()
 
 
@@ -32,13 +33,13 @@ def find_gapped(ref_matrix):
 
 cls = ['A549', 'H1','K562']
  # 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
-lengths = {'DNA': 1500, 'HM': 11, 'TF': 257}
+lengths = {'DNA': 1800, 'HM': 11, 'TF': 257}
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
 model = CCTbert(
-    kmers=5, dim=256, lengths=lengths,
-    signal_length=10, depth=6, heads=6,
-    dim_head=128, mlp_dim=256, dropout=0.1
+    kmers=6, dim=320, lengths=lengths,
+    signal_length=args.signal_length, depth=6, heads=4,
+    dim_head=128, mlp_dim=320, dropout=0.2
 )
 model.to(device)
 
@@ -57,7 +58,7 @@ optimizer.zero_grad()
 optimizer.step()
 
 def shuffle_data():
-    chrs = np.arange(1, 4)
+    chrs = np.arange(1, 6)
     temp = np.tile(chrs, (len(cls), 1))
     for i in range(len(cls)):
         np.random.shuffle(temp[i, :])
@@ -88,8 +89,9 @@ for epoch in range(args.epochs):
     iterations = shuffle_data()
     training_losses = []
     validation_losses = []
+    valid_mask_los=[[],[],[],[],[]]
     for iter in range(iterations.shape[1]):
-        if iter < 2:
+        if iter < 4:
             model.train()
             mode = 'train'
         else:
@@ -97,18 +99,25 @@ for epoch in range(args.epochs):
             mode = 'validation'
         chr_data = iterations[:, iter].tolist()
         print(chr_data)
-        input_seqs, target_label, input_chip, input_label_mask=prepare_date(chr_data, ref_genomes, dnase_data, labels, chip_data, label_masks)
+        input_seqs, target_label, input_chip, input_label_mask=\
+            prepare_date(chr_data, ref_genomes, dnase_data, labels, chip_data, label_masks)
         dataloader = DataLoader(dataset=Task1Dataset(chr_data, target_label), batch_size=args.batchsize
-                                , shuffle=False, num_workers=2)
+                                , shuffle=True, num_workers=2)
         for step, (train_batch_idx) in enumerate(dataloader):
             t = time.time()
-            train_seq = torch.FloatTensor(input_seqs[train_batch_idx]).to(device)
-            train_tf_data = input_chip[train_batch_idx, :lengths['TF'], :].to(device)
-            train_hm_data = input_chip[train_batch_idx, lengths['TF']:, :].to(device)
-            train_lmask = torch.FloatTensor(input_label_mask[train_batch_idx]).to(device)
-            train_target = torch.FloatTensor(target_label[train_batch_idx]).to(device)
+            train_seq = torch.FloatTensor(input_seqs[train_batch_idx])\
+                .view(train_batch_idx.shape[0],5,lengths['DNA']).to(device)
+            train_tf_data = input_chip[train_batch_idx, :lengths['TF'], :]\
+                .view(train_batch_idx.shape[0],lengths['TF'],args.signal_length).to(device)
+            train_hm_data = input_chip[train_batch_idx, lengths['TF']:, :]\
+                .view(train_batch_idx.shape[0],lengths['HM'],args.signal_length).to(device)
+            train_lmask = torch.FloatTensor(input_label_mask[train_batch_idx])\
+                .view(train_batch_idx.shape[0],lengths['TF']+lengths['HM']).to(device)
+            train_target = torch.FloatTensor(target_label[train_batch_idx])\
+                .view(train_batch_idx.shape[0], lengths['TF'] + lengths['HM']).to(device)
             if mode == 'train':
-                output = model(train_seq, train_tf_data, train_hm_data, input_label_mask[train_batch_idx])
+                output = model(train_seq, train_tf_data, train_hm_data,
+                        input_label_mask[train_batch_idx].reshape(train_batch_idx.shape[0],lengths['TF']+lengths['HM']),mask_prob=0.6)
                 loss = criterion(output, train_target, train_lmask)
                 cur_loss = loss.item()
                 optimizer.zero_grad()
@@ -116,20 +125,25 @@ for epoch in range(args.epochs):
                 optimizer.step()
                 training_losses.append(cur_loss)
                 if step % 1000 == 0:
+                    print(mode)
                     print("Epoch:", '%04d' % (epoch + 1), "step:", '%04d' % (step + 1), "train_loss=",
                           "{:.7f}".format(cur_loss),
                           "time=", "{:.5f}".format(time.time() - t)
                           )
             else:
                 temp_loss=[]
-                for maskprob in [0.3, 0.6, 1]:
-                    output = model(train_seq, train_tf_data, train_hm_data, input_label_mask[train_batch_idx],mask_prob=maskprob)
+                validmasks = [0.3,0.45, 0.6,0.8, 1]
+                for maski in range(len(validmasks)):
+                    output = model(train_seq, train_tf_data, train_hm_data,
+                                   input_label_mask[train_batch_idx].reshape(train_batch_idx.shape[0],lengths['TF']+lengths['HM']),mask_prob=validmasks[maski])
                     loss = criterion(output, train_target, train_lmask)
                     cur_loss = loss.item()
+                    valid_mask_los[maski].append(cur_loss)
                     temp_loss.append(cur_loss)
                 vloss=np.mean(temp_loss)
                 validation_losses.append(vloss)
                 if step % 1000 == 0:
+                    print(mode)
                     print("Epoch:", '%04d' % (epoch + 1), "step:", '%04d' % (step + 1), "validation_loss=",
                           "{:.7f}".format(vloss),
                           "time=", "{:.5f}".format(time.time() - t)
@@ -141,9 +155,11 @@ for epoch in range(args.epochs):
     scheduler.step(valid_loss)
     print('Epoch: {} LR: {:.8f} valid_loss: {:.7f}'.format(epoch, optimizer.param_groups[0]['lr'], valid_loss))
 
-    # if valid_loss < best_loss:
-    #     best_loss = valid_loss
-    #     torch.save(model.state_dict(),
-    #                    '/scratch/drjieliu_root/drjieliu/zhenhaoz/models/pre_train_task1.pt')
-    #     print('save model')
+    for i in range(5):
+        print(np.average(valid_mask_los[i]))
+
+
+    torch.save(model.state_dict(),
+                       '/scratch/drjieliu_root/drjieliu/zhenhaoz/models/pre_train_task1.pt')
+    print('save model')
 
