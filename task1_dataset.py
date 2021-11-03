@@ -18,12 +18,12 @@ with open('/scratch/drjieliu_root/drjieliu/zhenhaoz/input_loc.pickle','rb') as f
 with open('/scratch/drjieliu_root/drjieliu/zhenhaoz/ref_genome/gapped_indices.pickle','rb') as f:
     gapped_indices=pickle.load(f)
 input_indices={}
-for chr in range(1,4):
+for chr in range(1,6):
     temp=np.delete(input_loc[chr] ,
                           np.intersect1d(input_loc[chr],gapped_indices[chr],return_indices=True)[1])
     input_indices[chr]=temp//1000
 
-sample_nums=[chr_lens[i-1]//1000 for i in range(1,4)]
+sample_nums=[chr_lens[i-1]//1000 for i in range(1,6)]
 class Task1Dataset(Dataset):
     def __init__(self, chroms,target_label):
         input_nums=[0]+[sample_nums[chr-1] for chr in chroms]
