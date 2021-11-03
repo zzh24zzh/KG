@@ -1,10 +1,10 @@
 import numpy as np
 import torch,os,pickle
-def undersampling_negatives(xidx,targets,undersampling_ratio=0.6):
+def undersampling_negatives(xidx,targets,undersample_negative_rate):
     all_negative_idx=np.where(np.sum(targets[xidx],1)==0)[0]
 
     probs=np.random.uniform(0,1,all_negative_idx.shape[0])
-    mask_idx=np.where(probs<undersampling_ratio)[0]
+    mask_idx=np.where(probs<undersample_negative_rate)[0]
     return np.delete(xidx,all_negative_idx[mask_idx])
 
 

@@ -25,13 +25,13 @@ for chr in range(1,6):
 
 sample_nums=[chr_lens[i-1]//1000 for i in range(1,6)]
 class Task1Dataset(Dataset):
-    def __init__(self, chroms,target_label):
+    def __init__(self, chroms,target_label,undersample_negative_rate):
         input_nums=[0]+[sample_nums[chr-1] for chr in chroms]
         pad_sum=[sum(input_nums[:i+1]) for i in range(len(chroms))]
         xindices=[]
         for i in range(len(pad_sum)):
             xindices.append(input_indices[chroms[i]]+pad_sum[i])
-        self.x_index=undersampling_negatives(np.concatenate(xindices),target_label)
+        self.x_index=undersampling_negatives(np.concatenate(xindices),target_label,undersample_negative_rate)
         self.num=self.x_index.shape[0]
     def __getitem__(self, index):
         return self.x_index[index]

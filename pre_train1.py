@@ -101,7 +101,7 @@ for epoch in range(args.epochs):
         print(chr_data)
         input_seqs, target_label, input_chip, input_label_mask=\
             prepare_date(chr_data, ref_genomes, dnase_data, labels, chip_data, label_masks)
-        dataloader = DataLoader(dataset=Task1Dataset(chr_data, target_label), batch_size=args.batchsize
+        dataloader = DataLoader(dataset=Task1Dataset(chr_data, target_label,undersample_negative_rate=0.95), batch_size=args.batchsize
                                 , shuffle=True, num_workers=2)
         for step, (train_batch_idx) in enumerate(dataloader):
             t = time.time()
@@ -142,8 +142,7 @@ for epoch in range(args.epochs):
                     temp_loss.append(cur_loss)
                 vloss=np.mean(temp_loss)
                 validation_losses.append(vloss)
-                if step % 1000 == 0:
-                    print(mode)
+                if step % 2000 == 0:
                     print("Epoch:", '%04d' % (epoch + 1), "step:", '%04d' % (step + 1), "validation_loss=",
                           "{:.7f}".format(vloss),
                           "time=", "{:.5f}".format(time.time() - t)
