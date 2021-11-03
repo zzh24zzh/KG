@@ -102,7 +102,7 @@ class Balanced_AsymmetricLoss(nn.Module):
             if self.disable_torch_grad_focal_loss:
                 torch.set_grad_enabled(True)
             loss *= one_sided_w
-            loss*=mask
+        loss*=mask
         return -loss.sum()/(torch.sum(mask)+self.eps)
 
 
@@ -155,10 +155,15 @@ def generate_mask(input,label_mask,mask_token,mask_prob):
 #             loss*=mask
 #         return -loss.sum()
 
-# criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=0, clip=0.05, disable_torch_grad_focal_loss=True)
+# criterion =Balanced_AsymmetricLoss(gamma_neg=0, gamma_pos=0, clip=0, disable_torch_grad_focal_loss=True)
 # input = torch.randn((2,3), requires_grad=True)
 # target=torch.empty((2,3)).random_(2)
+# # mask=torch.ones((2,3))
 # mask=torch.empty((2,3)).random_(2)
 # print(mask)
 # l=criterion(input,target,mask)
 # print(l)
+# criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
+# print(criterion(input, target))
+# criterion = torch.nn.BCEWithLogitsLoss()
+# print(criterion(input, target))
