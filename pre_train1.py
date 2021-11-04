@@ -15,8 +15,9 @@ from train_util import pos_class_weight
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate.')
+parser.add_argument('--warmup', type=int, default=5, help='warm up.')
 parser.add_argument('--batchsize', type=int, default=64)
-parser.add_argument('--epochs', type=int, default=10)
+parser.add_argument('--epochs', type=int, default=5)
 parser.add_argument('--load_model', default=False, action='store_true', help='load trained model')
 parser.add_argument('--test', default=False, action='store_true', help='model testing')
 parser.add_argument('--signal_length', type=int, default=10)
@@ -31,8 +32,8 @@ def find_gapped(ref_matrix):
     return gapped_idx
 
 
-cls = ['A549', 'H1','K562']
- # 'MCF-7', 'GM12878', 'HepG2', 'HeLa-S3'
+cls = ['A549', 'H1','K562','MCF-7', 'GM12878', 'HepG2', 'HeLa-S3']
+
 lengths = {'DNA': 1800, 'HM': 11, 'TF': 257}
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(device)
@@ -46,19 +47,19 @@ model.to(device)
 pos_ratio = np.load('/scratch/drjieliu_root/drjieliu/zhenhaoz/pos_class_weight_sqrt.npy')
 # asymmetric loss
 # criterion = Balanced_AsymmetricLoss(gamma_neg=4, gamma_pos=1, clip=0.05, alpha=torch.FloatTensor(pos_ratio).to(device))
-
+criterion = Balanced_AsymmetricLoss(gamma_neg=0, gamma_pos=0, clip=0, alpha=torch.FloatTensor(pos_ratio).to(device))
 # normal bcelosswithlogits
-criterion = Balanced_AsymmetricLoss(gamma_neg=0, gamma_pos=0, clip=0)
+# criterion = Balanced_AsymmetricLoss(gamma_neg=0, gamma_pos=0, clip=0)
 optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
 # learning rate decay
 scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=2)
 # warmup
-scheduler = WarmupLR(scheduler, init_lr=1e-5, num_warmup=3, warmup_strategy='cos')
+scheduler = WarmupLR(scheduler, init_lr=1e-5, num_warmup=args.warmup, warmup_strategy='cos')
 optimizer.zero_grad()
 optimizer.step()
 
 def shuffle_data():
-    chrs = np.arange(1, 6)
+    chrs = np.arange(1, 23)
     temp = np.tile(chrs, (len(cls), 1))
     for i in range(len(cls)):
         np.random.shuffle(temp[i, :])
@@ -84,14 +85,14 @@ with open('/scratch/drjieliu_root/drjieliu/zhenhaoz/label_mask.pickle', 'rb') as
 
 best_loss = 1e10
 scheduler.step(best_loss)
-
+print('initial learning rate: %s'%optimizer.param_groups[0]['lr'])
 for epoch in range(args.epochs):
     iterations = shuffle_data()
     training_losses = []
     validation_losses = []
     valid_mask_los=[[],[],[],[],[]]
     for iter in range(iterations.shape[1]):
-        if iter < 4:
+        if iter < 20 or epoch<args.warmup:
             model.train()
             mode = 'train'
         else:
@@ -101,7 +102,7 @@ for epoch in range(args.epochs):
         print(chr_data)
         input_seqs, target_label, input_chip, input_label_mask=\
             prepare_date(chr_data, ref_genomes, dnase_data, labels, chip_data, label_masks)
-        dataloader = DataLoader(dataset=Task1Dataset(chr_data, target_label,undersample_negative_rate=0.95), batch_size=args.batchsize
+        dataloader = DataLoader(dataset=Task1Dataset(chr_data, target_label,undersample_negative_rate=1), batch_size=args.batchsize
                                 , shuffle=True, num_workers=2)
         for step, (train_batch_idx) in enumerate(dataloader):
             t = time.time()
@@ -115,50 +116,55 @@ for epoch in range(args.epochs):
                 .view(train_batch_idx.shape[0],lengths['TF']+lengths['HM']).to(device)
             train_target = torch.FloatTensor(target_label[train_batch_idx])\
                 .view(train_batch_idx.shape[0], lengths['TF'] + lengths['HM']).to(device)
+
             if mode == 'train':
+                train_time=time.time()
                 output = model(train_seq, train_tf_data, train_hm_data,
-                        input_label_mask[train_batch_idx].reshape(train_batch_idx.shape[0],lengths['TF']+lengths['HM']),mask_prob=0.6)
+                        input_label_mask[train_batch_idx].reshape(train_batch_idx.shape[0],lengths['TF']+lengths['HM']),mask_prob=0.25)
                 loss = criterion(output, train_target, train_lmask)
-                cur_loss = loss.item()
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+
+                cur_loss = loss.item()
                 training_losses.append(cur_loss)
-                if step % 1000 == 0:
-                    print(mode)
+                if step % 10000 == 0:
                     print("Epoch:", '%04d' % (epoch + 1), "step:", '%04d' % (step + 1), "train_loss=",
                           "{:.7f}".format(cur_loss),
-                          "time=", "{:.5f}".format(time.time() - t)
+                          "time=", "{:.5f}".format(time.time() - t),
+                          "train_time=","{:.5f}".format(time.time() - train_time)
                           )
             else:
-                temp_loss=[]
-                validmasks = [0.3,0.45, 0.6,0.8, 1]
-                for maski in range(len(validmasks)):
-                    output = model(train_seq, train_tf_data, train_hm_data,
-                                   input_label_mask[train_batch_idx].reshape(train_batch_idx.shape[0],lengths['TF']+lengths['HM']),mask_prob=validmasks[maski])
-                    loss = criterion(output, train_target, train_lmask)
-                    cur_loss = loss.item()
-                    valid_mask_los[maski].append(cur_loss)
-                    temp_loss.append(cur_loss)
-                vloss=np.mean(temp_loss)
-                validation_losses.append(vloss)
-                if step % 2000 == 0:
-                    print("Epoch:", '%04d' % (epoch + 1), "step:", '%04d' % (step + 1), "validation_loss=",
-                          "{:.7f}".format(vloss),
-                          "time=", "{:.5f}".format(time.time() - t)
-                          )
+                with torch.no_grad():
+                    temp_loss=[]
+                    validmasks = [0.3,0.45, 0.6,0.8, 1]
+                    for maski in range(len(validmasks)):
+                        output = model(train_seq, train_tf_data, train_hm_data,
+                                       input_label_mask[train_batch_idx].reshape(train_batch_idx.shape[0],lengths['TF']+lengths['HM']),mask_prob=validmasks[maski])
+                        loss = criterion(output, train_target, train_lmask)
+                        cur_loss = loss.item()
+                        valid_mask_los[maski].append(cur_loss)
+                        temp_loss.append(cur_loss)
+                    vloss=np.mean(temp_loss)
+                    validation_losses.append(vloss)
+                    if step % 10000 == 0:
+                        print("Epoch:", '%04d' % (epoch + 1), "step:", '%04d' % (step + 1), "validation_loss=",
+                              "{:.7f}".format(vloss),
+                              "time=", "{:.5f}".format(time.time() - t)
+                              )
 
     train_loss = np.average(training_losses)
     print('Epoch: {} LR: {:.8f} train_loss: {:.7f}'.format(epoch, optimizer.param_groups[0]['lr'], train_loss))
-    valid_loss = np.average(validation_losses)
+    if epoch<args.warmup:
+        valid_loss=0
+    else:
+        valid_loss = np.average(validation_losses)
+        for i in range(5):
+            print(np.average(valid_mask_los[i]))
     scheduler.step(valid_loss)
     print('Epoch: {} LR: {:.8f} valid_loss: {:.7f}'.format(epoch, optimizer.param_groups[0]['lr'], valid_loss))
-
-    for i in range(5):
-        print(np.average(valid_mask_los[i]))
-
-
     torch.save(model.state_dict(),
-                       '/scratch/drjieliu_root/drjieliu/zhenhaoz/models/pre_train_task1.pt')
+                       '/scratch/drjieliu_root/drjieliu/zhenhaoz/models/pre_train_task1_warmup.pt')
     print('save model')
 
